@@ -1,0 +1,3 @@
+{"id": 1, "op": "put", "key": 10, "value": "primeiro teste"}
+{"id": 2, "op": "put", "key": 20, "value": "segundo teste"}
+{"id": 3, "op": "put", "key": 30, "value": "terceiro teste"}
