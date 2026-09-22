@@ -61,8 +61,14 @@ def main():
                         break
 
                     chave, tamanho_valor = struct.unpack(">QI", cabecalho)
-                    indice[chave] = offset
-                    f_banco.read(tamanho_valor)
+                    valor_bytes = f_banco.read(tamanho_valor)
+                    valor = valor_bytes.decode("utf-8")
+
+                    if valor == "__TOMBSTONE__":
+                        indice.pop(chave, None)
+                    else:
+                        indice[chave] = offset
+                        
 
         with open(args.input, "r", encoding= "utf-8") as arquivo_entrada, \
         open(args.output, "w", encoding= "utf-8") as arquivo_saida:
@@ -72,7 +78,6 @@ def main():
                 operacao = json.loads(linha) # lendo do json
                 id_op = operacao["id"]
 
-                #TODO
                 if operacao["op"] == "put":
                     chave = operacao["key"]
                     valor = operacao["value"]
@@ -80,10 +85,10 @@ def main():
                     valor_bytes = valor.encode("utf-8")
                     tamanho_valor = len(valor_bytes)
 
-                    # /*O método struct.pack(formato, valores) usa caracteres para definir a conversão. Usaremos:
+                    # O método struct.pack(formato, valores) usa caracteres para definir a conversão. Usaremos:
                     # > : Ordem de bytes Big-Endian (padrão de organização de memória comum em arquivos binários).
-                    # Q : Unsigned long long (representa o uint64 da chave).
-                    # I : Unsigned int (representa os 4 bytes para o tamanho do valor). */
+                    # Q : Unsigned long long (representa o uint64 da chave). 8 bytes
+                    # I : Unsigned int (representa os 4 bytes para o tamanho do valor).
 
                     cabecalho = struct.pack(">QI", chave, tamanho_valor)
 
@@ -98,15 +103,50 @@ def main():
                     resposta = {"id": id_op, "status": "ok"}
                     arquivo_saida.write(json.dumps(resposta) + "\n")
 
+                elif operacao["op"] == "get": 
+                    chave = operacao["key"]
 
+                    if chave not in indice:
+                        resposta = {"id": id_op, "status": "not_found"}
+                        arquivo_saida.write(json.dumps(resposta) + "\n")
 
-                elif operacao["op"] == "get":
-                    pass
+                    else:
+                        offset = indice[chave]
+
+                        with open(arquivo_banco, "rb") as f_banco:
+                            f_banco.seek(offset) # move o cursor do arquivo para a posição apontada no dicionario de indices
+                            cabecalho = f_banco.read(12)
+                            _, tamanho_valor = struct.unpack(">QI", cabecalho) # usei o urderscore para o python ignorar o valor da chave lido, uma vez q ja sabemos
+
+                            valor_bytes = f_banco.read(tamanho_valor)
+                            valor = valor_bytes.decode("utf-8")
+
+                        resposta = {"id": id_op, "status": "ok", "value": valor}
+                        arquivo_saida.write(json.dumps(resposta) + "\n")
 
                 elif operacao["op"] == "delete":
-                    pass
+                    chave = operacao["key"]
 
+                    if chave not in indice:
+                        resposta = {"id": id_op, "status": "not_found"}
+                        arquivo_saida.write(json.dumps(resposta) + "\n")
 
+                    else:
+                        del indice[chave]
+
+                        tombstone = "__TOMBSTONE__"
+                        tombstone_bytes = tombstone.encode("utf-8")
+                        tamanho_tomb_bytes = len(tombstone_bytes)
+
+                        cabecalho = struct.pack(">QI", chave, tamanho_tomb_bytes)
+
+                        deletado_completo = cabecalho + tombstone_bytes
+
+                        with open(arquivo_banco, "ab") as f_banco:
+                            f_banco.write(deletado_completo)
+
+                        resposta = {"id": id_op, "status": "ok"}
+                        arquivo_saida.write(json.dumps(resposta) + "\n")
 
     elif args.command == "verify":
         print(f"[DEBUG] Verificando dados na pasta: {args.data_dir}")
