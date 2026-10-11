@@ -151,11 +151,18 @@ def main():
     elif args.command == "verify":
         print(f"[DEBUG] Verificando dados na pasta: {args.data_dir}")
     elif args.command == "describe":
-        print("Engine ED2 - Fase 1: Arquivo Heap com Índice em Memória")
-        print("Aluno: Leonan Louvem")
-        print("Aluno: Pedro Duarte")
-        print("Aluno: Rodrigo Motta")
-        print("Aluno: Giovane Bahia")
+        print("=== ED2 Storage Engine ===")
+        print("Tipo: Arquivo Heap com índice em memória")
+        print("Objetivo: persistência de chave/valor com append-only log")
+        print("Operações suportadas: put, get, delete")
+        print("Recuperação: reconstrói o índice a partir de heap.db")
+        print("Persistência: grava registros em disco em formato binário")
+        print("Integridade: suporte a tombstones para exclusões")
+        print("Alunos:")
+        print("- Leonan Louvem")
+        print("- Pedro Duarte")
+        print("- Rodrigo Motta")
+        print("- Giovane Bahia")
 
 if __name__ == "__main__":
     main()
