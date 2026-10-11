@@ -153,6 +153,9 @@ def main():
     elif args.command == "describe":
         print("Engine ED2 - Fase 1: Arquivo Heap com Índice em Memória")
         print("Aluno: Leonan Louvem")
+        print("Aluno: Pedro Duarte")
+        print("Aluno: Rodrigo Motta")
+        print("Aluno: Giovane Bahia")
 
 if __name__ == "__main__":
     main()
