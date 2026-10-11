@@ -5,6 +5,110 @@ import argparse
 import sys
 
 
+def verify_database(data_dir):
+    """Varre o arquivo heap.db e gera um relatório de integridade estrutural."""
+    caminho = Path(data_dir)
+    arquivo_banco = caminho / "heap.db"
+
+    relatorio = {
+        "file": str(arquivo_banco),
+        "status": "ok",
+        "size_bytes": 0,
+        "records": 0,
+        "valid_records": 0,
+        "tombstones": 0,
+        "duplicate_keys": 0,
+        "errors": [],
+        "last_offset": 0,
+    }
+
+    if not arquivo_banco.exists():
+        relatorio["status"] = "error"
+        relatorio["errors"].append("Arquivo heap.db não encontrado.")
+        return relatorio
+
+    try:
+        with open(arquivo_banco, "rb") as f_banco:
+            relatorio["size_bytes"] = arquivo_banco.stat().st_size
+            chaves_vistas = set()
+
+            while True:
+                offset = f_banco.tell()
+                if offset >= relatorio["size_bytes"]:
+                    break
+
+                cabecalho = f_banco.read(12)
+                if len(cabecalho) == 0:
+                    break
+
+                if len(cabecalho) < 12:
+                    relatorio["status"] = "error"
+                    relatorio["errors"].append(
+                        f"Registro truncado em offset {offset}: cabeçalho incompleto."
+                    )
+                    break
+
+                chave, tamanho_valor = struct.unpack(">QI", cabecalho)
+                relatorio["records"] += 1
+                relatorio["last_offset"] = offset
+
+                payload = f_banco.read(tamanho_valor)
+                if len(payload) != tamanho_valor:
+                    relatorio["status"] = "error"
+                    relatorio["errors"].append(
+                        f"Registro truncado em offset {offset}: valor esperado {tamanho_valor}, "
+                        f"lidos {len(payload)} bytes."
+                    )
+                    break
+
+                try:
+                    valor = payload.decode("utf-8")
+                except UnicodeDecodeError:
+                    relatorio["status"] = "error"
+                    relatorio["errors"].append(
+                        f"Registro inválido em offset {offset}: payload não é UTF-8 válido."
+                    )
+                    continue
+
+                if chave in chaves_vistas:
+                    relatorio["duplicate_keys"] += 1
+                else:
+                    chaves_vistas.add(chave)
+
+                if valor == "__TOMBSTONE__":
+                    relatorio["tombstones"] += 1
+                else:
+                    relatorio["valid_records"] += 1
+
+    except OSError as exc:
+        relatorio["status"] = "error"
+        relatorio["errors"].append(f"Erro ao abrir o arquivo: {exc}")
+
+    if relatorio["errors"] and relatorio["status"] != "warning":
+        relatorio["status"] = "error"
+
+    return relatorio
+
+
+def print_verify_report(relatorio):
+    print("=== RELATÓRIO DE INTEGRIDADE ===")
+    print(f"Arquivo: {relatorio['file']}")
+    print(f"Status: {relatorio['status'].upper()}")
+    print(f"Tamanho: {relatorio['size_bytes']} bytes")
+    print(f"Registros encontrados: {relatorio['records']}")
+    print(f"Registros válidos: {relatorio['valid_records']}")
+    print(f"Tombstones: {relatorio['tombstones']}")
+    print(f"Chaves duplicadas: {relatorio['duplicate_keys']}")
+    print(f"Erros detectados: {len(relatorio['errors'])}")
+
+    if relatorio["errors"]:
+        print("Detalhes:")
+        for erro in relatorio["errors"]:
+            print(f"- {erro}")
+    else:
+        print("Nenhum problema estrutural detectado.")
+
+
 def main():
     # Cria o analisador principal
     parser = argparse.ArgumentParser(description="ED2 - Persistent Storage Engine")
@@ -149,7 +253,12 @@ def main():
                         arquivo_saida.write(json.dumps(resposta) + "\n")
 
     elif args.command == "verify":
-        print(f"[DEBUG] Verificando dados na pasta: {args.data_dir}")
+        relatorio = verify_database(args.data_dir)
+        print_verify_report(relatorio)
+
+        if relatorio["status"] == "error":
+            raise SystemExit(1)
+
     elif args.command == "describe":
         print("=== ED2 Storage Engine ===")
         print("Tipo: Arquivo Heap com índice em memória")

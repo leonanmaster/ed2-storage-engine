@@ -15,10 +15,78 @@ O nosso engine escreve os dados sempre no final do arquivo (append-only) para ga
 * Comando run -> Operação delete (Tombstone): Remove a chave da RAM (del indice[chave]) e grava no disco um novo registro no final com o valor especial "__TOMBSTONE__" para invalidar a chave permanentemente.
 * Recuperação de Falhas (Recovery): Antes de processar os comandos no 'run', o sistema lê o heap.db inteiro. Reconstrói o índice na RAM com os offsets mais recentes. Se ler um valor "__TOMBSTONE__", apaga a chave da RAM (indice.pop), garantindo a persistência das exclusões.
 
-## ❌ O que falta fazer (Próximos Passos)
+## 🔎 Verificação de Integridade
 
-* Comando verify: Implementar a lógica de varrer o banco de dados para checar a integridade estrutural do arquivo e gerar o relatório exigido.
-* Comando describe: Apenas imprimir as informações da engine e dados do aluno.
+O comando `verify` faz uma varredura estrutural do arquivo `heap.db` para garantir que o log binário ainda está consistente, mesmo em um banco append-only.
+
+A lógica funciona assim:
+
+1. Abre o arquivo em modo binário e percorre byte a byte em sequência.
+2. Lê o cabeçalho de cada registro: `key` (8 bytes) + `value_size` (4 bytes).
+3. Confirma se há bytes suficientes para completar o cabeçalho e o payload esperado.
+4. Lê o valor correspondente e tenta decodificar em UTF-8.
+5. Contabiliza registros válidos, tombstones e tamanho total do arquivo.
+6. Gera um relatório final com `status`, número de registros, tombstones e erros detectados.
+
+### O que é validado
+
+- Arquivo `heap.db` existe e está acessível.
+- O cabeçalho do registro é completo (`12 bytes`).
+- O payload informado no cabeçalho realmente existe no arquivo.
+- O valor do payload pode ser decodificado como UTF-8.
+- O banco não apresenta truncamento ou corrupção de bytes estruturais.
+
+### Como o verificador captura erros
+
+O comando usa um varredor sequencial e, quando encontra algo inconsistente, registra a falha em vez de ignorá-la. Exemplos comuns:
+
+- `Registro truncado em offset X: cabeçalho incompleto.`
+  - O arquivo terminou antes de o cabeçalho completo ser lido.
+- `Registro truncado em offset X: valor esperado N, lidos M bytes.`
+  - O compromisso do registro diz que há `N` bytes no valor, mas o arquivo acabou antes disso.
+- `Registro inválido em offset X: payload não é UTF-8 válido.`
+  - O conteúdo gravado não corresponde a texto UTF-8 esperado pela engine.
+
+### Exemplo de execução bem-sucedida
+
+```bash
+python3 engine.py verify --data-dir ./dados
+```
+
+Saída esperada:
+
+```text
+=== RELATÓRIO DE INTEGRIDADE ===
+Arquivo: dados/heap.db
+Status: OK
+Tamanho: 237 bytes
+Registros encontrados: 9
+Registros válidos: 6
+Tombstones: 3
+Chaves duplicadas: 7
+Erros detectados: 0
+Nenhum problema estrutural detectado.
+```
+
+### Exemplo de arquivo corrompido
+
+Se o `heap.db` for gerado com um payload menor do que o tamanho declarado no cabeçalho, o verificador identifica o problema imediatamente:
+
+```text
+=== RELATÓRIO DE INTEGRIDADE ===
+Arquivo: dados_corrupt/heap.db
+Status: ERROR
+Tamanho: 15 bytes
+Registros encontrados: 1
+Registros válidos: 0
+Tombstones: 0
+Chaves duplicadas: 0
+Erros detectados: 1
+Detalhes:
+- Registro truncado em offset 0: valor esperado 5, lidos 3 bytes.
+```
+
+Esse mecanismo é importante porque o sistema é um log de append-only: não é suficiente apenas verificar se o arquivo existe; também precisamos garantir que cada segmento do log ainda representa um registro válido e íntegro.
 
 ## 💻 Como testar o código localmente
 
