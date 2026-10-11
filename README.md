@@ -14,6 +14,8 @@ O nosso engine escreve os dados sempre no final do arquivo (append-only) para ga
 * Comando run -> Operação get: Consulta o índice na RAM. Se existir, usa f_banco.seek(offset) para pular direto para o byte correto, lê o cabeçalho, descobre o tamanho e lê apenas os bytes do valor (decodificando de utf-8). Se não existir, retorna "not_found".
 * Comando run -> Operação delete (Tombstone): Remove a chave da RAM (del indice[chave]) e grava no disco um novo registro no final com o valor especial "__TOMBSTONE__" para invalidar a chave permanentemente.
 * Recuperação de Falhas (Recovery): Antes de processar os comandos no 'run', o sistema lê o heap.db inteiro. Reconstrói o índice na RAM com os offsets mais recentes. Se ler um valor "__TOMBSTONE__", apaga a chave da RAM (indice.pop), garantindo a persistência das exclusões.
+* Comando verify: Varre o arquivo `heap.db` em busca de registros truncados, valores inválidos e inconsistências estruturais, produzindo um relatório com status, contagem de registros, tombstones e erros.
+* Comando describe: Exibe uma descrição da engine, sua arquitetura e os autores do projeto.
 
 ## 🔎 Verificação de Integridade
 
